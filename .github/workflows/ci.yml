@@ -1,0 +1,43 @@
+# Valida o projeto a cada push: cria o schema, carrega a amostra duas vezes
+# (para provar que a carga é idempotente) e roda todas as análises.
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  sql:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fuel_dw
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: fuel_dw
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cria o schema
+        run: for f in sql/ddl/*.sql; do psql -v ON_ERROR_STOP=1 -f "$f"; done
+
+      - name: Carrega a amostra duas vezes
+        run: |
+          ./scripts/load_raw.sh data/sample/anp_amostra_sintetica.csv
+          ./scripts/load_raw.sh data/sample/anp_amostra_sintetica.csv
+
+      - name: Confere que não houve duplicação
+        run: |
+          RAW=$(psql -tAc "SELECT COUNT(*) FROM raw.precos_combustiveis")
+          FATO=$(psql -tAc "SELECT COUNT(*) FROM dw.fato_preco_combustivel")
+          echo "raw=$RAW fato=$FATO"
+          test "$RAW" -eq "$FATO"
+
+      - name: Roda as análises
+        run: for f in sql/analysis/*.sql; do psql -v ON_ERROR_STOP=1 -f "$f" > /dev/null; done

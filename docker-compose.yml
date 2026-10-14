@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: fuel_dw
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fuel_dw
+    ports:
+      - "5432:5432"
+    volumes:
+      # Os scripts de sql/ddl rodam sozinhos na primeira subida do container.
+      - ./sql/ddl:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fuel_dw"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:
